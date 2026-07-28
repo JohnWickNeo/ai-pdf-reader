@@ -1,8 +1,13 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import os from "os";
 
-const UPLOAD_DIR = path.join(process.cwd(), ".data", "uploads");
+// Use /tmp on Vercel/serverless environments, otherwise use local .data folder
+const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV;
+const UPLOAD_DIR = isVercel 
+  ? path.join(os.tmpdir(), "pdf-reader-uploads")
+  : path.join(process.cwd(), ".data", "uploads");
 
 // Ensure upload directory exists
 async function ensureUploadDir() {
