@@ -6,26 +6,21 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    const { filename, fileBase64, size } = await request.json();
 
-    if (!file) {
+    if (!fileBase64) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    if (file.type !== "application/pdf") {
-      return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
+    if (size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: "File size exceeds 10MB limit" }, { status: 400 });
     }
 
-    const { documentId, size } = await saveDocument(file);
+    const { documentId } = await saveDocument(fileBase64, filename);
 
     const documentMetadata: Document = {
       id: documentId,
-      filename: file.name,
+      filename: filename,
       size,
       status: "uploaded",
       createdAt: new Date().toISOString(),

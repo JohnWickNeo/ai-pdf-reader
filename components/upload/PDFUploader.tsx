@@ -73,23 +73,40 @@ export function PDFUploader() {
     setUploadProgress(0);
     setError(null);
 
-    const formData = new FormData();
-    formData.append("file", fileToUpload);
+    const reader = new FileReader();
 
-    const xhr = new XMLHttpRequest();
-
-    xhr.upload.onprogress = (event) => {
+    reader.onprogress = (event) => {
       if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        // Base64 encoding takes some time, so we show progress for file reading
+        const percentComplete = Math.round((event.loaded / event.total) * 50);
         setUploadProgress(percentComplete);
       }
     };
 
-    xhr.onload = async () => {
-      if (xhr.status === 201) {
-        try {
-          const response: Document = JSON.parse(xhr.responseText);
-          const documentId = response.id;
+    reader.onload = async () => {
+      try {
+        const fileBase64 = reader.result as string;
+        setUploadProgress(75); // Reading done, now sending
+        
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: fileToUpload.name,
+            size: fileToUpload.size,
+            fileBase64
+          })
+        });
+
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json();
+          throw new Error(errData.error || "Upload failed.");
+        }
+
+        const response = await uploadRes.json();
+        const documentId = response.id;
+        
+        setUploadProgress(100);
           
           // Phase 2: Extract text
           setUploadState("extracting");
@@ -124,26 +141,15 @@ export function PDFUploader() {
           setUploadState("idle");
           setFile(null);
         }
-      } else {
-        try {
-          const errorResponse = JSON.parse(xhr.responseText);
-          setError(errorResponse.error || "Upload failed. Please try again.");
-        } catch {
-          setError("Upload failed. Please try again.");
-        }
-        setUploadState("idle");
-        setFile(null);
-      }
     };
 
-    xhr.onerror = () => {
+    reader.onerror = () => {
       setUploadState("idle");
-      setError("Network error occurred during upload.");
+      setError("Failed to read file on the client.");
       setFile(null);
     };
 
-    xhr.open("POST", "/api/upload");
-    xhr.send(formData);
+    reader.readAsDataURL(fileToUpload);
   };
 
   return (
