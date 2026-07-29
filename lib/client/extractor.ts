@@ -1,10 +1,15 @@
 import { pdfjs } from "react-pdf";
 import { DocumentPage } from "@/types/document";
 
+// Set up the worker for react-pdf
+if (typeof window !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
+
 export async function extractTextFromPDFFile(file: File): Promise<DocumentPage[]> {
   const arrayBuffer = await file.arrayBuffer();
   
-  // Load the document using the worker configured in components/reader/PdfViewerClient.tsx
+  // Load the document
   const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
   const pdfDocument = await loadingTask.promise;
   
