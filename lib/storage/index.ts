@@ -26,8 +26,8 @@ export async function saveDocument(fileBase64: string, filename: string): Promis
   const safeFilename = `${documentId}${extension}`;
   const filePath = path.join(UPLOAD_DIR, safeFilename);
 
-  // Remove the data URI prefix if it exists
-  const base64Data = fileBase64.replace(/^data:application\/pdf;base64,/, "");
+  // Robustly remove any data URI prefix (e.g. data:application/pdf;base64,)
+  const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
   const buffer = Buffer.from(base64Data, "base64");
 
   await fs.writeFile(filePath, buffer);
