@@ -68,88 +68,70 @@ export function PDFUploader() {
     }
   };
 
-  const uploadFile = (fileToUpload: File) => {
+  const uploadFile = async (fileToUpload: File) => {
     setUploadState("uploading");
     setUploadProgress(0);
     setError(null);
 
-    const reader = new FileReader();
+    try {
+      // Simulate upload progress for UX since fetch doesn't support upload progress natively
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90));
+      }, 300);
 
-    reader.onprogress = (event) => {
-      if (event.lengthComputable) {
-        // Base64 encoding takes some time, so we show progress for file reading
-        const percentComplete = Math.round((event.loaded / event.total) * 50);
-        setUploadProgress(percentComplete);
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": fileToUpload.type,
+          "x-file-name": encodeURIComponent(fileToUpload.name),
+        },
+        body: fileToUpload,
+      });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (!uploadRes.ok) {
+        const errData = await uploadRes.json();
+        throw new Error(errData.error || "Upload failed.");
       }
-    };
 
-    reader.onload = async () => {
-      try {
-        const fileBase64 = reader.result as string;
-        setUploadProgress(75); // Reading done, now sending
-        
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: fileToUpload.name,
-            size: fileToUpload.size,
-            fileBase64
-          })
-        });
+      const response = await uploadRes.json();
+      const documentId = response.id;
+      
+      // Phase 2: Extract text
+      setUploadState("extracting");
+      const extractRes = await fetch("/api/process/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
 
-        if (!uploadRes.ok) {
-          const errData = await uploadRes.json();
-          throw new Error(errData.error || "Upload failed.");
-        }
+      if (!extractRes.ok) {
+        const errData = await extractRes.json();
+        throw new Error(errData.error || "Failed to extract text from PDF.");
+      }
 
-        const response = await uploadRes.json();
-        const documentId = response.id;
-        
-        setUploadProgress(100);
-          
-          // Phase 2: Extract text
-          setUploadState("extracting");
-          const extractRes = await fetch("/api/process/extract", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ documentId }),
-          });
+      // Phase 3: Index document
+      setUploadState("indexing");
+      const embedRes = await fetch("/api/process/embed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId }),
+      });
 
-          if (!extractRes.ok) {
-            const errData = await extractRes.json();
-            throw new Error(errData.error || "Failed to extract text from PDF.");
-          }
+      if (!embedRes.ok) {
+        const errData = await embedRes.json();
+        throw new Error(errData.error || "Failed to generate embeddings.");
+      }
 
-          // Phase 3: Index document
-          setUploadState("indexing");
-          const embedRes = await fetch("/api/process/embed", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ documentId }),
-          });
-
-          if (!embedRes.ok) {
-            const errData = await embedRes.json();
-            throw new Error(errData.error || "Failed to generate embeddings.");
-          }
-
-          // Complete
-          router.push(`/reader/${documentId}`);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : "Processing failed.");
-          setUploadState("idle");
-          setFile(null);
-        }
-    };
-
-    reader.onerror = () => {
+      // Complete
+      router.push(`/reader/${documentId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Processing failed.");
       setUploadState("idle");
-      setError("Failed to read file on the client.");
       setFile(null);
-    };
-
-    reader.readAsDataURL(fileToUpload);
+    }
   };
 
   return (

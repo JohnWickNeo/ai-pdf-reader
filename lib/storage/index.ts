@@ -18,17 +18,13 @@ async function ensureUploadDir() {
   }
 }
 
-export async function saveDocument(fileBase64: string, filename: string): Promise<{ documentId: string }> {
+export async function saveDocument(buffer: Buffer, filename: string): Promise<{ documentId: string }> {
   await ensureUploadDir();
 
   const documentId = crypto.randomBytes(16).toString("hex");
   const extension = path.extname(filename) || ".pdf";
   const safeFilename = `${documentId}${extension}`;
   const filePath = path.join(UPLOAD_DIR, safeFilename);
-
-  // Robustly remove any data URI prefix (e.g. data:application/pdf;base64,)
-  const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
-  const buffer = Buffer.from(base64Data, "base64");
 
   await fs.writeFile(filePath, buffer);
 
