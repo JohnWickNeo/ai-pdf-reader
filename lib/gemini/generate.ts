@@ -2,17 +2,6 @@ import { geminiClient, withRetry } from "./client";
 
 const MODEL_NAME = "gemini-2.5-flash";
 
-const SYSTEM_PROMPT = `
-You are a helpful AI assistant tasked with answering questions about a specific document.
-You will be provided with context extracted from the document, organized by page.
-
-Instructions:
-1. Answer the question using ONLY the supplied document context.
-2. Do not fabricate information.
-3. If the answer is not contained in the supplied context, clearly say: "I could not find the answer to this in the document."
-4. Be clear, concise, and helpful.
-5. When possible, mention the relevant page number(s) you used to find the answer.
-`;
 
 export async function generateText(prompt: string): Promise<string> {
   try {

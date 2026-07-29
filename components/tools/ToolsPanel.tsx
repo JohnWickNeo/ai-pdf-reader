@@ -16,11 +16,13 @@ import {
   Check
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-
-type ToolId = "summarize" | "detailed_summary" | "key_points" | "study_notes" | "explain" | "quiz" | "important_concepts";
+import { getDocumentLocally } from "@/lib/client/storage";
+import { getToolParams, ToolType } from "@/lib/client/tools";
+import { findSimilarChunks } from "@/lib/client/retrieve";
+import { DocumentChunk } from "@/types/retrieval";
 
 interface ToolDef {
-  id: ToolId;
+  id: ToolType;
   name: string;
   description: string;
   icon: React.ReactNode;
@@ -80,10 +82,37 @@ export function ToolsPanel({ documentId }: ToolsPanelProps) {
       if (activeTool.id === "explain") params.concept = inputValue;
       if (activeTool.id === "quiz") params.difficulty = selectedOption;
 
+      // 1. Get tool execution parameters (query, topK, promptInstruction)
+      const { query, topK, promptInstruction } = getToolParams(activeTool.id, params);
+
+      // 2. Get local document data
+      const localData = await getDocumentLocally(documentId);
+      let relevantChunks: DocumentChunk[] = [];
+
+      if (localData && localData.chunks && localData.chunks.length > 0) {
+        // 3. Get embedding for the tool's synthetic query
+        const embedRes = await fetch("/api/process/embed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chunks: [{ text: query }] }),
+        });
+
+        if (!embedRes.ok) throw new Error("Failed to generate query embedding");
+        
+        const { embeddedChunks } = await embedRes.json();
+        const queryEmbedding = embeddedChunks[0]?.embedding;
+        
+        if (queryEmbedding) {
+          // 4. Find most similar chunks locally
+          relevantChunks = findSimilarChunks(queryEmbedding, localData.chunks, topK);
+        }
+      }
+
+      // 5. Send context to server
       const response = await fetch("/api/tools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId, tool: activeTool.id, params }),
+        body: JSON.stringify({ promptInstruction, relevantChunks }),
       });
 
       const data = await response.json();

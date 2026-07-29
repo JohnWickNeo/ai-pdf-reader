@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
+import { Document as PdfDocument, Page, pdfjs } from "react-pdf";
+import { getDocumentLocally } from "@/lib/client/storage";
 import { PdfToolbar } from "./PdfToolbar";
 import { ReadingProgress } from "./ReadingProgress";
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -21,10 +22,19 @@ export function PdfViewer({ documentId }: PdfViewerProps) {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   
-  const pdfUrl = `/api/documents/${documentId}/pdf`;
+  useEffect(() => {
+    async function loadFile() {
+      const docData = await getDocumentLocally(documentId);
+      if (docData && docData.pdfFile) {
+        setPdfFile(docData.pdfFile);
+      }
+    }
+    loadFile();
+  }, [documentId]);
 
-  const getStorageKey = () => `pdf-progress-${documentId}`;
+  const getStorageKey = useCallback(() => `pdf-progress-${documentId}`, [documentId]);
 
   // Save progress when page changes
   useEffect(() => {
@@ -40,7 +50,7 @@ export function PdfViewer({ documentId }: PdfViewerProps) {
         })
       );
     }
-  }, [currentPage, numPages, documentId]);
+  }, [currentPage, numPages, documentId, getStorageKey]);
 
   const onDocumentLoadSuccess = ({ numPages: nextNumPages }: { numPages: number }) => {
     setNumPages(nextNumPages);
@@ -133,8 +143,9 @@ export function PdfViewer({ documentId }: PdfViewerProps) {
       
       <div className="flex-1 overflow-auto bg-muted/30 relative">
         <div className="min-h-full min-w-full flex justify-center p-4 sm:p-8">
-          <Document
-            file={pdfUrl}
+          {pdfFile ? (
+            <PdfDocument
+              file={pdfFile}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
               <div className="flex items-center justify-center h-full">
@@ -157,7 +168,7 @@ export function PdfViewer({ documentId }: PdfViewerProps) {
                   renderTextLayer={true}
                   customTextRenderer={
                     searchText 
-                      ? ({ str, itemIndex }) => {
+                      ? ({ str }) => {
                           if (str.toLowerCase().includes(searchText.toLowerCase())) {
                             return `<mark>${str}</mark>`;
                           }
@@ -168,7 +179,12 @@ export function PdfViewer({ documentId }: PdfViewerProps) {
                 />
               </div>
             )}
-          </Document>
+          </PdfDocument>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-muted-foreground animate-pulse">Loading local PDF...</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

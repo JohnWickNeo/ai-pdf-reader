@@ -1,10 +1,12 @@
-import { retrieveRelevantContext } from "./retrieve";
-import { answerDocumentQuestion } from "../gemini/generate";
-import { DocumentChunk } from "@/types/retrieval";
+export type ToolType = "summarize" | "detailed_summary" | "key_points" | "study_notes" | "explain" | "quiz" | "important_concepts";
 
-type ToolType = "summarize" | "detailed_summary" | "key_points" | "study_notes" | "explain" | "quiz" | "important_concepts";
+export interface ToolExecutionParams {
+  query: string;
+  topK: number;
+  promptInstruction: string;
+}
 
-export async function executeTool(documentId: string, tool: ToolType, params?: Record<string, string>): Promise<string> {
+export function getToolParams(tool: ToolType, params?: Record<string, string>): ToolExecutionParams {
   let query = "";
   let topK = 5;
   let promptInstruction = "";
@@ -52,30 +54,5 @@ export async function executeTool(documentId: string, tool: ToolType, params?: R
       throw new Error(`Unknown tool: ${tool}`);
   }
 
-  // 1. Retrieve targeted chunks based on the tool's synthetic query
-  const chunks = await retrieveRelevantContext(documentId, query, topK);
-  
-  if (!chunks || chunks.length === 0) {
-    return "I couldn't find enough information in the document to complete this task.";
-  }
-
-  // 2. Format context
-  const context = chunks
-    .map((chunk) => `[Page ${chunk.pageNumber}]\n${chunk.text}`)
-    .join("\n\n");
-
-  // 3. Create the final prompt for Gemini
-  const finalPrompt = `
-Task Instruction:
-${promptInstruction}
-
-Document Context:
-${context}
-  `.trim();
-
-  // 4. Generate the response
-  // We can reuse the `answerDocumentQuestion` function since it is designed to take context and a prompt
-  const result = await answerDocumentQuestion(context, `Task Instruction: ${promptInstruction}`);
-  
-  return result;
+  return { query, topK, promptInstruction };
 }

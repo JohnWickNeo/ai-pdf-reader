@@ -2,11 +2,13 @@
 
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, File, AlertCircle, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { UploadCloud, File, AlertCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
-import { Document } from "@/types/document";
+import { Document, DocumentPage } from "@/types/document";
+import { extractTextFromPDFFile } from "@/lib/client/extractor";
+import { chunkDocument } from "@/lib/retrieval/chunking";
+import { saveDocumentLocally } from "@/lib/client/storage";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -74,56 +76,62 @@ export function PDFUploader() {
     setError(null);
 
     try {
-      // Simulate upload progress for UX since fetch doesn't support upload progress natively
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 300);
+      // 1. Generate a local document ID
+      const documentId = Math.random().toString(36).substring(2, 15);
+      setUploadProgress(20);
 
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": fileToUpload.type,
-          "x-file-name": encodeURIComponent(fileToUpload.name),
-        },
-        body: fileToUpload,
-      });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (!uploadRes.ok) {
-        const errData = await uploadRes.json();
-        throw new Error(errData.error || "Upload failed.");
-      }
-
-      const response = await uploadRes.json();
-      const documentId = response.id;
-      
-      // Phase 2: Extract text
+      // 2. Extract text locally
       setUploadState("extracting");
-      const extractRes = await fetch("/api/process/extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId }),
-      });
-
-      if (!extractRes.ok) {
-        const errData = await extractRes.json();
-        throw new Error(errData.error || "Failed to extract text from PDF.");
+      let pages: DocumentPage[] = [];
+      try {
+        pages = await extractTextFromPDFFile(fileToUpload);
+      } catch (extractErr) {
+        console.error("Local extraction error:", extractErr);
+        throw new Error("Failed to extract text. The PDF might be encrypted or unsupported.");
       }
+      
+      const extractedDoc = {
+        documentId,
+        pageCount: pages.length,
+        pages,
+      };
 
-      // Phase 3: Index document
+      // 3. Chunk text locally
+      const chunks = chunkDocument(extractedDoc);
+      setUploadProgress(50);
+
+      // 4. Index document (get embeddings from server)
       setUploadState("indexing");
       const embedRes = await fetch("/api/process/embed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId }),
+        body: JSON.stringify({ chunks }),
       });
 
       if (!embedRes.ok) {
         const errData = await embedRes.json();
         throw new Error(errData.error || "Failed to generate embeddings.");
       }
+
+      const { embeddedChunks } = await embedRes.json();
+      setUploadProgress(90);
+
+      // 5. Save everything to local IndexedDB
+      const documentMetadata: Document = {
+        id: documentId,
+        filename: fileToUpload.name,
+        size: fileToUpload.size,
+        status: "ready",
+        createdAt: new Date().toISOString(),
+      };
+
+      await saveDocumentLocally(documentId, {
+        metadata: documentMetadata,
+        pdfFile: fileToUpload,
+        chunks: embeddedChunks,
+      });
+
+      setUploadProgress(100);
 
       // Complete
       router.push(`/reader/${documentId}`);

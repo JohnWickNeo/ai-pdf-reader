@@ -1,22 +1,13 @@
-import { PdfViewerClient } from "@/components/reader/PdfViewerClient";
+import { PdfViewerClient } from "@/components/reader/PdfViewerWrapper";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { ToolsPanel } from "@/components/tools/ToolsPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getDocumentPath } from "@/lib/storage";
-import { notFound } from "next/navigation";
-
 export default async function ReaderPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  
-  // Verify document exists
-  const path = await getDocumentPath(id);
-  if (!path) {
-    notFound();
-  }
 
   return (
     <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden">

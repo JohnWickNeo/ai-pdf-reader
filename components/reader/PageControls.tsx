@@ -13,10 +13,12 @@ interface PageControlsProps {
 
 export function PageControls({ currentPage, numPages, onPageChange }: PageControlsProps) {
   const [inputValue, setInputValue] = useState(currentPage.toString());
+  const [prevPage, setPrevPage] = useState(currentPage);
 
-  useEffect(() => {
+  if (currentPage !== prevPage) {
+    setPrevPage(currentPage);
     setInputValue(currentPage.toString());
-  }, [currentPage]);
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);

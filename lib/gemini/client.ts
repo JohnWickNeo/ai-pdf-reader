@@ -21,7 +21,7 @@ export async function withRetry<T>(
   while (attempt < maxRetries) {
     try {
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
       attempt++;
       if (attempt >= maxRetries) {
         throw error;
@@ -29,7 +29,7 @@ export async function withRetry<T>(
       
       // Wait before retrying (exponential backoff with jitter)
       const delay = baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 500;
-      console.warn(`Gemini API call failed. Retrying in ${Math.round(delay)}ms... (Attempt ${attempt} of ${maxRetries})`, error?.message);
+      console.warn(`Gemini API call failed. Retrying in ${Math.round(delay)}ms... (Attempt ${attempt} of ${maxRetries})`, error instanceof Error ? error.message : "Unknown error");
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

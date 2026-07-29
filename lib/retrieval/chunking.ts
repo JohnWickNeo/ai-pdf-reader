@@ -1,6 +1,5 @@
 import { ExtractedDocument } from "@/types/document";
 import { DocumentChunk } from "@/types/retrieval";
-import crypto from "crypto";
 
 const MAX_CHUNK_LENGTH = 1000;
 
@@ -36,7 +35,7 @@ export function chunkDocument(document: ExtractedDocument): DocumentChunk[] {
 
 function createChunk(documentId: string, text: string, pageNumber: number, chunkIndex: number): DocumentChunk {
   return {
-    id: crypto.randomBytes(8).toString("hex"),
+    id: Math.random().toString(36).substring(2, 10),
     documentId,
     text: text.trim(),
     pageNumber,

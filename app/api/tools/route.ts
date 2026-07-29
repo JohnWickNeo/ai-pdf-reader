@@ -1,35 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDocumentMetadata } from "@/lib/storage";
-import { executeTool } from "@/lib/retrieval/tools";
-import { Document, ExtractedDocument } from "@/types/document";
+import { answerDocumentQuestion } from "@/lib/gemini/generate";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { documentId, tool, params } = body;
+    const { promptInstruction, relevantChunks } = body;
 
-    if (!documentId || !tool) {
+    if (!promptInstruction || !relevantChunks || !Array.isArray(relevantChunks)) {
       return NextResponse.json(
-        { error: "Missing documentId or tool" },
+        { error: "Missing promptInstruction or relevantChunks" },
         { status: 400 }
       );
     }
 
-    const metadata: Document & { extracted?: ExtractedDocument } = await getDocumentMetadata(documentId);
-
-    if (!metadata) {
-      return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    if (relevantChunks.length === 0) {
+      return NextResponse.json({ result: "I couldn't find enough information in the document to complete this task." });
     }
 
-    if (metadata.status !== "ready" || !metadata.extracted) {
-      return NextResponse.json(
-        { error: "Document is still processing or failed extraction" },
-        { status: 400 }
-      );
-    }
+    // Format context
+    const context = relevantChunks
+      .map((chunk: { pageNumber: number, text: string }) => `[Page ${chunk.pageNumber}]\n${chunk.text}`)
+      .join("\n\n");
 
-    // Execute the tool logic
-    const result = await executeTool(documentId, tool, params);
+    const finalPrompt = `Task Instruction: ${promptInstruction}`;
+
+    const result = await answerDocumentQuestion(context, finalPrompt);
 
     return NextResponse.json({ result });
   } catch (error) {

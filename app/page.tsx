@@ -1,4 +1,4 @@
-import { PDFUploader } from "@/components/upload/PDFUploader";
+import { PDFUploader } from "@/components/upload/PDFUploaderWrapper";
 
 export default function Home() {
   return (

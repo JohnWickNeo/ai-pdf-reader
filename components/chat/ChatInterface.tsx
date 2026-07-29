@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Trash2, Loader2, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { getDocumentLocally } from "@/lib/client/storage";
+import { findSimilarChunks } from "@/lib/client/retrieve";
+import { DocumentChunk } from "@/types/retrieval";
 
 interface Message {
   id: string;
@@ -25,22 +28,22 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export function ChatInterface({ documentId }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`chat-history-${documentId}`);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          console.error("Failed to parse chat history");
+        }
+      }
+    }
+    return [];
+  });
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Load chat history from local storage
-  useEffect(() => {
-    const saved = localStorage.getItem(`chat-history-${documentId}`);
-    if (saved) {
-      try {
-        setMessages(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse chat history");
-      }
-    }
-  }, [documentId]);
 
   // Save chat history on update
   useEffect(() => {
@@ -58,7 +61,7 @@ export function ChatInterface({ documentId }: ChatInterfaceProps) {
     if (!text.trim() || isLoading) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: "user",
       content: text.trim(),
     };
@@ -68,10 +71,37 @@ export function ChatInterface({ documentId }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
+      // 1. Get local document data for similarity search
+      const localData = await getDocumentLocally(documentId);
+      let relevantChunks: DocumentChunk[] = [];
+
+      if (localData && localData.chunks && localData.chunks.length > 0) {
+        // 2. Get embedding for the user's query
+        const embedRes = await fetch("/api/process/embed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chunks: [{ text: text.trim() }] }),
+        });
+
+        if (embedRes.ok) {
+          const { embeddedChunks } = await embedRes.json();
+          const queryEmbedding = embeddedChunks[0]?.embedding;
+          
+          if (queryEmbedding) {
+            // 3. Find most similar chunks locally
+            relevantChunks = findSimilarChunks(queryEmbedding, localData.chunks, 4);
+          }
+        }
+      }
+
+      // 4. Send query + relevant chunks to chat API
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId, message: text.trim() }),
+        body: JSON.stringify({ 
+          message: text.trim(),
+          relevantChunks
+        }),
       });
 
       const data = await response.json();
@@ -81,7 +111,7 @@ export function ChatInterface({ documentId }: ChatInterfaceProps) {
       }
 
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         role: "assistant",
         content: data.answer,
         sources: data.sources,
@@ -91,7 +121,7 @@ export function ChatInterface({ documentId }: ChatInterfaceProps) {
     } catch (error) {
       console.error(error);
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         role: "assistant",
         content: "Sorry, I encountered an error while processing your request. Please try again.",
       };
@@ -156,7 +186,7 @@ export function ChatInterface({ documentId }: ChatInterfaceProps) {
                   onClick={() => handleSend(q)}
                   className="text-sm px-4 py-2.5 bg-muted/50 hover:bg-muted text-left rounded-lg transition-colors border border-transparent hover:border-border truncate"
                 >
-                  "{q}"
+                  &quot;{q}&quot;
                 </button>
               ))}
             </div>
